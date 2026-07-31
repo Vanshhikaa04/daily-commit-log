@@ -1,0 +1,79 @@
+name: Daily Auto Commits
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-auto-commits
+  cancel-in-progress: false
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "BeaconBandhu"
+          git config user.email "171481676+BeaconBandhu@users.noreply.github.com"
+
+      - name: Decide whether to commit
+        id: decide
+        run: |
+          set -euo pipefail
+          mkdir -p .state
+          STATE_FILE=".state/commit-count.json"
+          TODAY=$(date -u +%F)
+
+          SAVED_DATE=""
+          if [ -f "$STATE_FILE" ]; then
+            SAVED_DATE=$(jq -r '.date' "$STATE_FILE")
+          fi
+
+          if [ "$SAVED_DATE" != "$TODAY" ]; then
+            TARGET=$(( (RANDOM % 5) + 5 ))
+            echo "{\"date\": \"$TODAY\", \"target\": $TARGET, \"count\": 0}" > "$STATE_FILE"
+          fi
+
+          TARGET=$(jq -r '.target' "$STATE_FILE")
+          COUNT=$(jq -r '.count' "$STATE_FILE")
+
+          echo "Target for $TODAY: $TARGET, committed so far: $COUNT"
+          if [ "$COUNT" -lt "$TARGET" ]; then
+            echo "should_commit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_commit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Make a commit
+        if: steps.decide.outputs.should_commit == 'true'
+        run: |
+          set -euo pipefail
+          STATE_FILE=".state/commit-count.json"
+          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COUNT=$(jq -r '.count' "$STATE_FILE")
+          TARGET=$(jq -r '.target' "$STATE_FILE")
+          NEW_COUNT=$((COUNT + 1))
+
+          echo "- $TS" >> activity-log.md
+          jq --argjson c "$NEW_COUNT" '.count = $c' "$STATE_FILE" > "$STATE_FILE.tmp"
+          mv "$STATE_FILE.tmp" "$STATE_FILE"
+
+          git add activity-log.md "$STATE_FILE"
+          git commit -m "chore: activity update ($TS) [$NEW_COUNT/$TARGET today]"
+
+      - name: Pull --rebase and push
+        if: steps.decide.outputs.should_commit == 'true'
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          git push origin HEAD:main
