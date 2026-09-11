@@ -28,8 +28,8 @@ jobs:
 
       - name: Configure git identity
         run: |
-          git config user.name "BeaconBandhu"
-          git config user.email "171481676+BeaconBandhu@users.noreply.github.com"
+          git config user.name "Vanshhikaa04"
+          git config user.email "268219499+Vanshhikaa04@users.noreply.github.com"
 
       - name: Run daily commit bot
         run: python scripts/daily_commit.py
